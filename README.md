@@ -1,2 +1,2 @@
 # StormDataRPub
-StormData for RPub
+Reproducible Research: Analysis of Storm data and its affectations for publication

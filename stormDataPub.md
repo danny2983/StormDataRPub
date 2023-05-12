@@ -1,0 +1,310 @@
+---
+title: "Reproducible Research: Analysis of Storm data"
+author: "Daniel Cevallos"
+date: "12/05/2023"
+output: 
+  html_document:
+    keep_md: true
+---
+
+Introduction Impact of Weather Events in the US
+======================================================
+
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+Synopsis
+========
+
+The analysis on the storm event database revealed that tornadoes are the most
+dangerous weather event to the population health. While as the economic impact of weather events was
+Flash floods and thunderstorm winds caused billions of dollars
+in property damages. The largest crop damage is caused by
+drought. All these things between years 1950 and 2011
+
+
+Data Processing
+===============
+
+The analysis was performed on
+[Storm Events Database](http://www.ncdc.noaa.gov/stormevents/ftp.jsp), provided by
+[National Climatic Data Center](http://www.ncdc.noaa.gov/). The data is from a comma-separated-value file available
+[here](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2).
+There is also some documentation of the data available
+[here](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf).
+
+Initialize with the read of the data
+
+```r
+stormData <- read.csv(bzfile("./data/repdata_data_StormData.csv.bz2"))
+```
+
+The Data Clean process involves case and punctuation changes. Verifying the number of events
+
+
+```r
+# number of unique event types
+length(unique(stormData$EVTYPE))
+```
+
+```
+## [1] 985
+```
+
+```r
+stormData$EVTYPE <- toupper(stormData$EVTYPE)
+stormData$EVTYPE <- gsub("[[:blank:][:punct:]+]", " ", stormData$EVTYPE)
+# number of unique event types verified
+length(unique(stormData$EVTYPE))
+```
+
+```
+## [1] 874
+```
+
+Dangerous Events with respect to Population Health
+================================================
+
+To find the event types that are most harmful to population health, the total number
+of events are aggregated by the event type. After separate by fatalities and injuries. 
+
+
+```r
+library(plyr)
+```
+
+```
+## Warning: package 'plyr' was built under R version 4.2.3
+```
+
+```r
+totalEvnt <- ddply(stormData, .(EVTYPE), summarize,
+                    fatalities = sum(FATALITIES),
+                    injuries = sum(INJURIES))
+
+# Find events that caused most death and injury
+fatality <- head(totalEvnt[order(totalEvnt$fatalities, decreasing = T), ], 10)
+injury<- head(totalEvnt[order(totalEvnt$injuries, decreasing = T), ], 10)
+```
+
+Top 10 events that caused largest number of fatalities
+
+
+```r
+fatality[, c("EVTYPE", "fatalities")]
+```
+
+```
+##             EVTYPE fatalities
+## 741        TORNADO       5633
+## 116 EXCESSIVE HEAT       1903
+## 138    FLASH FLOOD        978
+## 240           HEAT        937
+## 410      LIGHTNING        816
+## 762      TSTM WIND        504
+## 154          FLOOD        470
+## 515    RIP CURRENT        368
+## 314      HIGH WIND        248
+## 19       AVALANCHE        224
+```
+
+Top 10 events that caused most number of injuries
+
+
+```r
+injury[, c("EVTYPE", "injuries")]
+```
+
+```
+##                EVTYPE injuries
+## 741           TORNADO    91346
+## 762         TSTM WIND     6957
+## 154             FLOOD     6789
+## 116    EXCESSIVE HEAT     6525
+## 410         LIGHTNING     5230
+## 240              HEAT     2100
+## 382         ICE STORM     1975
+## 138       FLASH FLOOD     1777
+## 671 THUNDERSTORM WIND     1488
+## 209              HAIL     1361
+```
+
+Economic Effects of Weather Events
+==================================
+
+To analyze the impact on the economy, available property
+damage and crop damage reportings/estimates were used.
+
+In the raw data, the property damage is represented with two fields, a number
+`PROPDMG` in USD and the exponent `PROPDMGEXP`. Similarly, the crop damage
+is represented using two fields, `CROPDMG` and `CROPDMGEXP`. The first step in the
+analysis is to calculate the property and crop damage for each event.
+
+
+```r
+transformUnits <- function(e) {
+    # h -> hundred, k -> thousand, m -> million, b -> billion
+    if (e %in% c('h', 'H'))
+        return(2)
+    else if (e %in% c('k', 'K'))
+        return(3)
+    else if (e %in% c('m', 'M'))
+        return(6)
+    else if (e %in% c('b', 'B'))
+        return(9)
+    else if (!is.na(as.numeric(e))) 
+        return(as.numeric(e))
+    else if (e %in% c('', '-', '?', '+'))
+        return(0)
+    else {
+        stop("Invalid value.")
+    }
+}
+```
+
+
+```r
+prop_dmg_exp <- suppressWarnings(sapply(stormData$PROPDMGEXP, FUN=transformUnits))
+stormData$prop_dmg <- stormData$PROPDMG * (10 ** prop_dmg_exp)
+crop_dmg_exp <- suppressWarnings(sapply(stormData$CROPDMGEXP, FUN=transformUnits))
+stormData$crop_dmg <- stormData$CROPDMG * (10 ** crop_dmg_exp)
+```
+
+
+The Economic losses by Event. 
+
+```r
+library(plyr)
+losses <- ddply(stormData, .(EVTYPE), summarize,
+                   prop_dmg = sum(prop_dmg),
+                   crop_dmg = sum(crop_dmg))
+
+# filter out events that caused no economic loss
+losses <- losses[(losses$prop_dmg > 0 | losses$crop_dmg > 0), ]
+prop_dmg_evnt <- head(losses[order(losses$prop_dmg, decreasing = T), ], 10)
+crop_dmg_evnt <- head(losses[order(losses$crop_dmg, decreasing = T), ], 10)
+```
+
+Top 10 events that caused most property damage USD
+
+
+```r
+prop_dmg_evnt[, c("EVTYPE", "prop_dmg")]
+```
+
+```
+##                EVTYPE     prop_dmg
+## 154             FLOOD 144657709807
+## 366 HURRICANE TYPHOON  69305840000
+## 741           TORNADO  56947380677
+## 585       STORM SURGE  43323536000
+## 138       FLASH FLOOD  16822673979
+## 209              HAIL  15735267513
+## 357         HURRICANE  11868319010
+## 755    TROPICAL STORM   7703890550
+## 866      WINTER STORM   6688497251
+## 314         HIGH WIND   5270046295
+```
+
+Top 10 events that caused most crop damage
+
+
+```r
+crop_dmg_evnt[, c("EVTYPE", "crop_dmg")]
+```
+
+```
+##                EVTYPE    crop_dmg
+## 84            DROUGHT 13972566000
+## 154             FLOOD  5661968450
+## 519       RIVER FLOOD  5029459000
+## 382         ICE STORM  5022113500
+## 209              HAIL  3025954473
+## 357         HURRICANE  2741910000
+## 366 HURRICANE TYPHOON  2607872800
+## 138       FLASH FLOOD  1421317100
+## 125      EXTREME COLD  1312973000
+## 185      FROST FREEZE  1094186000
+```
+
+Results
+=======
+
+Health impact of weather events
+-------------------------------
+
+The following are the most dangerous weather event types.
+
+
+```r
+library(ggplot2)
+library(gridExtra)
+#fatalities events
+p1 <- ggplot(data=fatality,
+             aes(x=reorder(EVTYPE, fatalities), y=fatalities, fill=fatalities)) +
+    geom_bar(stat="identity") +
+    coord_flip() +
+    ylab("Fatalities") +
+    xlab("Event") +
+    theme(legend.position="none")
+#injuries events
+p2 <- ggplot(data=injury,
+             aes(x=reorder(EVTYPE, injuries), y=injuries, fill=injuries)) +
+    geom_bar(stat="identity") +
+    coord_flip() + 
+    ylab("Injuries") +
+    xlab("Event") +
+    theme(legend.position="none")
+
+grid.arrange(p1, p2, top="Most deadly weather events US between (1950-2011)")
+```
+
+![](stormDataPub_files/figure-html/unnamed-chunk-11-1.png)<!-- -->
+
+As see, the `TORNADO` event have the most number of deaths and injuries. There 
+are more than 5000 deaths and more than 10000 injuries between 1950 and 2011
+in US. 
+The next event types that are most dangerous with respect to population health
+are `excessive heat` and `flash floods`.
+
+Economic impact of weather events
+---------------------------------
+
+The following are the most severe weather event types
+
+
+
+```r
+library(ggplot2)
+library(gridExtra)
+
+p1 <- ggplot(data=prop_dmg_evnt,
+             aes(x=reorder(EVTYPE, prop_dmg), y=log10(prop_dmg), fill=prop_dmg )) +
+    geom_bar(stat="identity") +
+    coord_flip() +
+    xlab("Event") +
+    ylab("Property Damage USD (log)") +
+    theme(legend.position="none")
+
+p2 <- ggplot(data=crop_dmg_evnt,
+             aes(x=reorder(EVTYPE, crop_dmg), y=crop_dmg, fill=crop_dmg)) +
+    geom_bar(stat="identity") +
+    coord_flip() + 
+    xlab("Event") +
+    ylab("Crop Damage USD") + 
+    theme(legend.position="none")
+
+grid.arrange(p1, p2, top="Weather costs US between (1950-2011)")
+```
+
+![](stormDataPub_files/figure-html/unnamed-chunk-12-1.png)<!-- -->
+
+Property damages are given in logarithmic scale.
+The `FLASH FLOODS` and `THUNDERSTORM WINDS` cost the largest
+property damages. Due to
+untidy nature of the available data, type flood and flash flood are
+separate values and should be merged for more accurate data-driven conclusions.
+
+The most severe weather event in terms of crop damage is the `DROUGHT`. The drought has caused more than 10 billion USD damage followed by severe crop-damage-causing event types are floods and hails.
